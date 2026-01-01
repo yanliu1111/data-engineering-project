@@ -1,0 +1,16 @@
+# dbt local artifacts
+# dbt project
+dbt_project/target/
+dbt_project/dbt_packages/
+dbt_project/logs/
+
+# Python
+*.db
+__pycache__/
+venv/
+env/
+
+# OS/IDE
+.DS_Store
+Thumbs.db
+.vscode/
