@@ -51,7 +51,7 @@ A case study demonstrating how to build a modern analytics layer for an e-commer
 - Python 3.9+
 - dbt-core==1.10.x
 - dbt-sqlserver==1.9.x
-- Microsoft ODBC Driver 18 for SQL Server installed
+- Microsoft ODBC Driver 17 or higher for SQL Server installed
 
 ## Setup
 1. Install dependencies:
@@ -67,7 +67,7 @@ A case study demonstrating how to build a modern analytics layer for an e-commer
        outputs:
          dev:
            type: sqlserver
-           driver: ODBC Driver 18 for SQL Server
+           driver: ODBC Driver 17 for SQL Server
            server: YOUR_HOST or HOST\INSTANCE
            port: 1433
            database: YOUR_DB
@@ -106,10 +106,6 @@ Define sources in models/src_sources.yml:
 - Use artifacts (manifest.json) for lineage-aware impact analysis
 
 ## Troubleshooting
-- Credentials error “driver is required”: set driver in profiles.yml to “ODBC Driver 18 for SQL Server”
-- Named instances: use server: HOST\INSTANCE or specify the instance port
+- profile.yml misconfigurations: verify server, database, schema
 - Encryption issues: set encrypt: true and trust_cert: true for local/dev
 - Permissions: ensure CREATE TABLE/SCHEMA rights for your target schema
-
-## License
-Internal case study for analytics enablement. Adapt as needed for your organization.
