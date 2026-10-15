@@ -12,4 +12,5 @@ Focus: Real-time log analytics using streaming data pipelines to feed AI agents 
    3. AI agent integration for real-time insights/alerts
    4. Analytics dashboard or downstream consumption layer
    5. Use Case: Continuous monitoring and AI-driven analysis of log data
+4. Airflow ELT: Best practices for writing ETL and ELT pipelines
    
