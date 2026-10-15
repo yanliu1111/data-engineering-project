@@ -1,12 +1,7 @@
-# Astro Runtime includes the following pre-installed providers packages: https://www.astronomer.io/docs/astro/runtime-image-architecture#provider-packages
-# The following are extra provider packages for this demo. They are pinned at the latest version available in September 2024,
-# see https://airflow.apache.org/docs/ for the latest versions.
-apache-airflow-providers-amazon==9.35.1
-apache-airflow-providers-apprise==2.3.4
-apache-airflow-providers-common-io==1.8.0
-apache-airflow-providers-common-sql==2.1.1
-apache-airflow-providers-google==22.4.0
-apache-airflow-providers-microsoft-azure==15.0.1
-apache-airflow-providers-postgres==7.0.2
-apache-airflow-providers-snowflake==6.16.1
-dag-factory==1.1.0
+# Pinned so the demo behaves on webinar day exactly as it did in rehearsal.
+apache-airflow-providers-amazon[s3fs]==9.37.0
+apache-airflow-providers-common-ai[openai,sql]==0.10.0
+apache-airflow-providers-http==6.2.0
+apache-airflow-providers-postgres==7.1.0
+# Airflow stores pandas DataFrames returned by tasks (v1 to v3) as Parquet.
+pyarrow==26.0.0

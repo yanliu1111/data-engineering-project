@@ -1,105 +1,182 @@
-# Best practices for writing ETL and ELT pipelines
+# ETL/ELT demo (Airflow 3.3)
 
-This repository contains the code for the webinar demo shown in: Best practices for writing ETL and ELT pipelines.
+Astro project for the "ETL/ELT in 2026" webinar. One orders pipeline grows in five steps, each
+adding one Airflow feature.
 
-[Watch the webinar here for free!](https://www.astronomer.io/events/webinars/best-practices-for-writing-etl-elt-pipelines-video)
+Stack: Astro Runtime 3.3-8 (Airflow 3.3.2), MinIO for object storage, Postgres as the warehouse,
+a fake exchange-rate API, and an OpenAI model for the agent in v5.
 
-This repository is configured to spin up 7 Docker containers when you run `astro dev start` (See [Install the Astro CLI](https://docs.astronomer.io/astro/cli/install-cli)). if you cannot use the Astro CLI see [Running the demo in GH codespaces](#running-the-demo-in-gh-codespaces).
+## What's in here
 
-The containers are:
-- Postgres, port 5432: Airflow's Metadata Database
-- API server, port 8080: The Airflow component responsible for rendering the Airflow UI and serving several APIs
-- Scheduler: The Airflow component responsible for monitoring and triggering tasks
-- Dag Processor: The Airflow component responsible for parsing Dags
-- Triggerer: The Airflow component responsible for triggering deferred tasks
-- Postgres, port 5434: A Postgres database for the demo data
-- MinIO, port 9000: An S3-compatible object storage service for the demo data
+| Path | Used in | Purpose |
+|---|---|---|
+| `versions/v1/orders_pipeline.py` | v1 | Hardcoded store list, pandas, pure ETL |
+| `versions/v2/orders_pipeline.py` | v2, v3 | Dynamic task mapping. v3 runs this same file |
+| `versions/v3/xcom_backend.env` | v3, v4, v5 | The XCom backend settings, copied into `.env` by `./demo.sh use v3` |
+| `versions/v4/ingest_orders.py` | v4, v5 | Ingest layer: small "t" before loading, retry policy, produces `raw_orders` |
+| `versions/v4/transform_revenue.py` | v4, v5 | SQL in the warehouse, write-audit-publish, produces `daily_revenue` |
+| `versions/v5/revenue_agent.py` | v5 | `@task.agent` with a read-only `SQLToolset`, triggered by `daily_revenue` |
+| `versions/v5/revenue_agent_cryptic.py` | v5, optional | The same agent against cryptic column names |
+| `include/exchange_rates.py` | all | API client that raises `RateLimitedError` (429) or `ForbiddenError` (403) |
+| `include/demo_tools/generate_orders.py` | `demo.sh` | Writes the store files to MinIO |
+| `warehouse/init.sql` | all | Tables, 13 days of history, the agent's read-only role |
+| `fake_api/server.py` | all | Exchange-rate API with three modes: `ok`, `flaky`, `bad-key` |
+| `docker-compose.override.yml` | | `minio`, `minio-init`, `warehouse`, `fake-api`, and the LLM key passthrough |
+| `airflow_settings.yaml` | | Connections: `minio`, `warehouse`, `warehouse_agent`, `exchange_rates_api`, `llm` |
+| `.env` | | Demo settings. `demo.sh` fills or empties its XCom backend block |
+| `demo.sh` | | Helper commands for the demo (`./demo.sh` lists them) |
 
-To connect Airflow to both the Postgres database and MinIO, create a `.env` file in the root directory of the project with the exact contents of the `.env.example` file. Note that you need to restart the Airflow instance with `astro dev restart` after creating the `.env` file for the changes to take effect.
+Each `versions/` folder holds only what its version adds. v3 adds configuration and no Dag code,
+and v5 adds two Dags next to the v4 ones. `dags/` only holds the active version's files:
+`./demo.sh use <version>` copies them from `versions/`. Edit the files in `versions/`, never in
+`dags/`: the next `use` or `reset` overwrites them.
 
-> [!TIP]
-> You need to be on at least version 1.34.0 of the Astro CLI in oder to run this repo. You can check your version with `astro version` and upgrade with `brew upgrade astro`
+## Requirements
 
-All the Dags run without any further setup or tools needed! 
+- Astro CLI (tested with 1.46) and Docker.
+- Run only this Astro project, and turn off Docker Desktop's Kubernetes if you don't need it. This
+  project idles at about 2 GB and peaked at about 3 GB during a clean rehearsal. With a second
+  Astro project and Kubernetes on an 8 GB Docker VM, the big file pushed the VM out of memory
+  twice in one rehearsal (v2, and v4's 429 run): the kernel killed Docker's DNS, and tasks failed
+  with `Temporary failure in name resolution`. In v4, Airflow retried the lost tasks about 3
+  minutes later and the run still ended in `success`, which is why `rehearse` now ends with a
+  check for failed task attempts. With only this project running (Kubernetes still on), the
+  rehearsal had no failures and took half the time.
+- `OPENAI_API_KEY` exported in the shell that runs `astro dev start` (only v5 needs it). The key is
+  passed through by `docker-compose.override.yml` and never written to a file.
+- macOS (the helper script uses the bash 3.2 that ships with it).
 
-## Content
-
-This repository contains:
-
-- [`dag-factory_dags`](/dags/dag-factory_dags/): A folder containing the code necessary to generate 3 Dags with the `dag-factory` package.
-    - `config_file.yml`: Config file creating the 3 Dags.
-    - `generate_dags.py`: The code to generate Dags from the config file.
-- [`helper`](/dags//helper/): This folder contains two Dags meant to help you explore and develop.
-    - `query_tables`: A Dag that queries the tables in the Postgres database to return the number of records for each table.
-    - `drop_tables_postgres`: A Dag that drops all the tables in the Postgres database.
-- [`modularized_task_groups`](/dags/modularized_task_groups/): This folder contains a Dag with a modularized task group, stored in [`include/custom_task_group/etl_task_group.py](/include/custom_task_group/etl_task_group.py).
-- [`pattern_dags`](/dags/pattern_dags/): Contains several Dags showing different ETL and ELT patterns. They all use the Open Meteo API as a source system and load data to Postgres. 
-
-All supporting SQL code is stored in the include folder.
-
-- [`include/dag_factory`](/include/dag_factory/): Contains the SQL code for the 3 Dag factory tasks.
-- [`include/sql`](/include/sql/): Contains the SQL code for all other tasks.
-
-The SQL code is repetitive for demo purposes, meaning you can manipulate the code for just one Dag to explore the Dags without affecting other Dags. In a real-world scenario you would likely modularize the SQL code further and avoid repetition.
-
-## How to run the demo
-
-1. Fork and clone this repository.
-2. Make sure you have the [Astro CLI](https://docs.astronomer.io/astro/cli/install-cli) installed and are at least on version 1.34.0.
-3. Copy the `.env.example` file to a new file called `.env`. If you want to use a custom XCom backend with MinIO uncomment the last 4 lines in the `.env` file.
-4. Run `astro dev start` to start the Airflow instance. The webserver with the Airflow UI will be available at `localhost:8080`.
-5. Run any Dag or Dag sequence.
-6. Use the `query_tables` Dag to check the number of records in the tables.
-
-If you'd like to directly interact with the Postgres database, you can use the following commands to connect to the database:
+## Start
 
 ```bash
-docker ps
+astro dev start
+./demo.sh reset
 ```
 
-This command will list all the running containers. Look for the container with the image `postgres:17.5-alpine`. Copy the container ID (in the format `30cfd7660be9`) and run the following command:
+| What | Where | Login |
+|---|---|---|
+| Airflow UI | http://localhost:8081, or the proxy URL that `astro dev start` prints | none |
+| MinIO console | http://localhost:9001 | `minio-admin` / `minio-demo-2026` |
+| Warehouse | `localhost:5436`, database `warehouse` | `etl` / `wh-demo-2026` |
+| Fake API | http://localhost:8090/rates | none |
 
-```bash
-docker exec -it <container_id> psql -U postgres
-```
+The ports avoid the defaults on purpose (8081 and 5435 are set in `.astro/config.yaml`), so this
+project can run next to another one when you're not demoing.
 
-You are now in a `psql` session connected to the Postgres database. You can list the tables with the command `\dt` and query the tables with `SELECT * FROM <table_name>;`.
+## Before going live (webinar day)
 
-## Resources
+1. Stop any other Astro project (`astro dev stop` in its folder) and Docker Desktop's Kubernetes.
+2. Run `./demo.sh wipe-runs`, then `./demo.sh rehearse`. Wiping first keeps the history clean
+   (only the rehearsal's runs). The rehearsal plays the whole demo unattended in about 6
+   minutes, for less than 2 cents of LLM calls. Every version then has finished runs to show,
+   including the 429 retry and the 403 fast failure. It ends with `./demo.sh reset`, so you start
+   from v1. Check that every step printed `success`, except the 403 step, which must say `failed`,
+   and that the last line is `no unexpected task failures`. If it lists failed attempts instead,
+   free memory for Docker and do step 2 again.
+3. Do step 2 on the webinar day itself (same UTC day). A Dag with `schedule="@daily"` starts one
+   run by itself the first time Airflow sees it each day, even with `catchup=False`. After the
+   rehearsal those runs have already happened, so nothing starts on its own during the demo.
+4. Open the tabs: Airflow UI (Dags list), MinIO console (bucket `xcom`).
+5. Record a backup video of the full demo.
 
-- Ebook: [Apache Airflow® Best Practices for ETL and ELT Pipelines](https://www.astronomer.io/ebooks/apache-airflow-best-practices-etl-elt-pipelines/)
-- Webinar: [Best practices for writing ETL and ELT pipelines](https://www.astronomer.io/events/webinars/best-practices-for-writing-etl-elt-pipelines-video)
-- Book on Airflow 3: [Practical Guide to Apache Airflow® 3](https://www.astronomer.io/ebooks/practical-guide-to-apache-airflow-3/)
+## Follow the demo
 
-# Running the demo in GH codespaces
+Trigger Dags with the UI's Trigger button, or `./demo.sh trigger <dag_id>`.
 
-If you can't install the CLI, you can run the project from your forked repo using GitHub Codespaces.
+### v1: the version everyone writes first
 
-1. Fork this repository
-2. Click on the green "Code" button and select the "Codespaces" tab. 
-3. Click on the 3 dots and then `+ New with options...` to create a new Codespace with a configuration, make sure to select a Machine type of at least `8-core`.
+1. Tour the UI on `orders_pipeline`: Dags list, Grid, Graph, a task's logs, the daily schedule.
+2. Trigger it. `./demo.sh revenue` then shows four stores for 2026-10-13 (the reset left only the
+   13 days of history before it).
+3. `./demo.sh new-store`: `store_toronto.csv` lands in the bucket. Trigger again, then
+   `./demo.sh revenue`: still four stores. v1 is blind to new sources.
 
-   ![Start GH Codespaces](img/start_codespaces.png)
+### v2: dynamic task mapping
 
-4. Copy the `.env.example` file to a new file called `.env`. If you want to use a custom XCom backend with MinIO uncomment the last 4 lines in the `.env` file.
+1. `./demo.sh use v2`, wait about 10 seconds. The UI shows a new Dag version. Its number depends
+   on the history: after `wipe-runs` and `rehearse` it's version 4, because every switch back to
+   v1 also counts as a new version.
+2. Trigger: one `extract` task per file, named after its store, at most 4 running at once. Each
+   takes about a second, so show the cap in the run's Gantt view: the fifth task starts when one
+   of the first four finishes.
+3. `./demo.sh revenue`: Toronto is in, with no code change.
+4. `./demo.sh big-file`: the online store sends 400,000 orders (36 MB of CSV). Trigger. It still
+   works: Airflow stores DataFrames as compressed Parquet. The point is where the data went:
+   `./demo.sh xcom-size` shows a 10 MB XCom for `extract` / `online`, the orders themselves, in
+   Airflow's metadata database. Don't open that task's XCom tab (Storage, then XCom) live: it
+   freezes the page for 5 to 10 seconds, and the value doesn't even show, because it's a single
+   line of hex millions of pixels wide.
 
-5. Run `astro dev start -n --wait 5m` in the Codespaces terminal to start the Airflow environment using the Astro CLI. This can take a few minutes.
+### v3: custom XCom backend
 
-   ![Start the Astro CLI in Codespaces](img/codespaces_start_astro.png)
+1. `./demo.sh use v3` copies the XCom backend settings from `versions/v3/xcom_backend.env` into
+   `.env` and restarts Airflow (about 20 seconds, while you explain the config).
+2. Trigger. `./demo.sh xcom-size`: the online store's value is now
+   `"s3://minio@xcom/xcom/..."`, a reference. The MinIO console shows the object (about 2.7 MB,
+   gzipped) in the `xcom` bucket. Values under 1 MB stay in the database.
 
-   Once you see the following printed to your terminal, the Airflow environment is ready to use:
+### v4: split by layer, connected by assets
 
-   ```text
-   ✔ Project image has been updated
-   ✔ Project started
-   ➤ Airflow UI: http://localhost:8080
-   ➤ Postgres Database: postgresql://localhost:5435/postgres
-   ➤ The default Postgres DB credentials are: postgres:postgres
-   ```
+1. `./demo.sh use v4`: `orders_pipeline` disappears, `ingest_orders` and `transform_revenue`
+   appear.
+2. Trigger `ingest_orders` only. `transform_revenue` starts by itself when ingest finishes
+   (run id `asset_triggered__...`). Show the asset graph.
+3. The retry policy, from the rehearsal's finished runs of `ingest_orders`:
+   - `get_exchange_rates` with three attempts: two 429s, each retried after 5 seconds, then
+     success. The log says `Retry policy decision action=retry reason='Rate limited: worth another try'`.
+   - `get_exchange_rates` failed on attempt 1 of 5: `action=fail reason='API key rejected: retrying will not help'`.
+   - To show it live instead: `./demo.sh api-mode flaky`, trigger (about 20 seconds), then
+     `./demo.sh api-mode bad-key`, trigger, and `./demo.sh api-mode ok` afterwards.
 
-6. Once the Airflow project has started, access the Airflow UI by clicking on the Ports tab and opening the forward URL for port `8080`.
+### v5: an agent consumes the same asset
 
-> [!TIP]
-> If when accessing the forward URL you get an error like `{"detail":"Invalid or unsafe next URL"}`, you will need to modify the forwarded URL. Delete everything forward of `next=....` (this should be after `/login?`, ). The URL will update, adn then remove `:8080`, so your URL should endd in `.app.github.dev`
+1. `./demo.sh use v5`: `revenue_agent` and `revenue_agent_cryptic` appear.
+2. Open the rehearsal's `revenue_agent` run: its XCom (Storage, then XCom) holds the structured
+   answer (`summary`, `anomalies`). The log shows each SQL query the agent ran
+   (`Running statement: ...`), then `LLM run complete` with token counts, and `LLM run cost`.
+3. Live, if time allows: trigger `ingest_orders`. Ingest, transform and agent run one after the
+   other, chained by assets (about 45 seconds).
+4. Optional: compare with the answer of `revenue_agent_cryptic`.
 
-7. Log into the Airflow UI. It is possible that after logging in you see an error, in this case you have to open the URL again from the ports tab.
+## Other commands
+
+| Command | What it does |
+|---|---|
+| `./demo.sh files` | List the store files in the landing bucket |
+| `./demo.sh psql` | Interactive psql on the warehouse |
+| `./demo.sh logs` | Follow the scheduler logs (tasks run in the scheduler container) |
+| `./demo.sh wipe-runs` | Switch to v1, then delete the run history and Dag versions of the demo Dags. `orders_pipeline` starts its daily run again right away, and the v4 Dags do the same when they next appear. A Dag with a running task is kept, and the command says so: wait, then run it again. Run `./demo.sh rehearse` afterwards. |
+| `astro dev kill` | Remove all containers and volumes (MinIO and warehouse data included) |
+
+## Use another LLM provider
+
+Change `model` in the `llm` connection in `airflow_settings.yaml` (for example
+`anthropic:<model id>`), add that provider's key variable next to `OPENAI_API_KEY` in
+`docker-compose.override.yml`, add the provider extra in `requirements.txt` (for example
+`apache-airflow-providers-common-ai[anthropic,sql]`), then `astro dev restart`.
+
+## Things learned while building (good Q&A material)
+
+- **`@daily` Dags run once on first sight.** With `catchup=False`, Airflow still runs the latest
+  interval when it first sees the Dag. That's why the rehearsal must happen on the day.
+- **Cron schedules have zero-length data intervals.** In Airflow 3, `@daily` uses
+  `CronTriggerTimetable`: a run's `data_interval_start` equals its `data_interval_end`. Don't
+  build incremental loads on the data interval unless you switch to `CronDataIntervalTimetable`.
+- **psycopg 3.** The postgres provider (7.1 here) switches to psycopg 3 when SQLAlchemy 2 is
+  installed, as in Astro Runtime 3.3. Bulk loads use `cursor.copy()`, not psycopg2's
+  `copy_expert()`.
+- **XCom backend compression.** `xcom_objectstorage_compression` takes the codec name (`gzip`). The
+  file suffix (`gz`), as in the provider's config example, raises an error.
+- **DataFrames in XCom are compact.** Airflow stores them as snappy-compressed Parquet, written
+  as hex text: 400,000 orders take 10 MB. Big XComs rarely crash; they quietly fill the metadata
+  database.
+- **Single-file bind mounts go stale.** Docker Desktop kept serving the old length of an edited
+  `init.sql`, which silently cut off its last statements. The compose file mounts folders only.
+- **Masked passwords.** Airflow hides connection passwords in every log line, so the demo
+  passwords are not words that appear in logs.
+- **The agent sees names and types, not comments.** `SQLToolset` reads column names and types, so
+  column descriptions go in the system prompt.
+- **`allowed_tables` is enforced, but it isn't the boundary.** `SQLToolset` parses every query and
+  rejects tables outside the list. Its own docs call that a guardrail, not a replacement for
+  database permissions, so `warehouse_agent` uses a role that can only read `daily_revenue` and
+  `rev_x`.

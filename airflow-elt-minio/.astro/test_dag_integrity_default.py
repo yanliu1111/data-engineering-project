@@ -1,4 +1,4 @@
-"""Test the validity of all DAGs. **USED BY DEV PARSE COMMAND DO NOT EDIT**"""
+"""Test the validity of all Dags. **USED BY DEV PARSE COMMAND DO NOT EDIT**"""
 
 from contextlib import contextmanager
 import logging
@@ -46,6 +46,10 @@ def os_getenv_monkeypatch(key: str, *args, **kwargs):
         key == "JENKINS_HOME" and default is None
     ):  # fix https://github.com/astronomer/astro-cli/issues/601
         return None
+    if (
+        key == "PYTEST_THEME" and default is None
+    ):  # fix pytest validation of pygment styles
+        return None
     if default:
         return default  # otherwise return whatever default has been passed
     return f"MOCKED_{key.upper()}_VALUE"  # if absolutely nothing has been passed - return the mocked value
@@ -81,6 +85,16 @@ def variable_get_monkeypatch(key: str, default_var=_no_default, deserialize_json
 
 
 Variable.get = variable_get_monkeypatch
+
+# Also patch airflow.sdk.Variable for Airflow 3.x SDK imports
+# This ensures Dags using 'from airflow.sdk import Variable' work with parse
+try:
+    from airflow import sdk as airflow_sdk
+
+    if hasattr(airflow_sdk, "Variable"):
+        airflow_sdk.Variable.get = variable_get_monkeypatch
+except ImportError:
+    pass  # airflow.sdk not available (older Airflow 3.x version)
 # # =========== /MONKEYPATCH VARIABLE.GET() ===========
 
 
@@ -100,7 +114,7 @@ def suppress_logging(namespace):
 
 def get_import_errors():
     """
-    Generate a tuple for import errors in the dag bag, and include DAGs without errors.
+    Generate a tuple for import errors in the dag bag, and include Dags without errors.
     """
     with suppress_logging("airflow"):
         dag_bag = DagBag(include_examples=False)
@@ -115,7 +129,7 @@ def get_import_errors():
         for k, v in dag_bag.import_errors.items():
             result.append((strip_path_prefix(k), v.strip()))
 
-        # Check if there are DAGs without errors
+        # Check if there are Dags without errors
         for file_path in dag_bag.dags:
             # Check if the file_path is not in import_errors, meaning no errors
             if file_path not in dag_bag.import_errors:
@@ -131,7 +145,7 @@ def test_file_imports(rel_path, rv):
     """Test for import errors on a file"""
     if os.path.exists(".astro/dag_integrity_exceptions.txt"):
         with open(".astro/dag_integrity_exceptions.txt", "r") as f:
-            exceptions = f.readlines()
+            exceptions = [line.strip() for line in f.readlines()]
     print(f"Exceptions: {exceptions}")
     if (rv != "No import errors") and rel_path not in exceptions:
         # If rv is not "No import errors," consider it a failed test

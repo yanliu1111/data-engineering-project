@@ -1,2 +1,6 @@
+api-server:
+    port: "8081"
+postgres:
+    port: "5435"
 project:
-    name: etl-ebook-repo
+    name: etl-elt-demo
