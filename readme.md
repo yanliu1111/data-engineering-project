@@ -13,4 +13,14 @@ Focus: Real-time log analytics using streaming data pipelines to feed AI agents 
    4. Analytics dashboard or downstream consumption layer
    5. Use Case: Continuous monitoring and AI-driven analysis of log data
 4. Airflow ELT: Best practices for writing ETL and ELT pipelines
-   
+   1. Modular DAG design
+   2. Task dependencies and scheduling
+   3. Error handling and retries
+   4. Logging and monitoring
+   5. Integration with external systems (e.g., databases, APIs)
+5. Airflow Data Quality: Stopping bad data before it breaks your Airflow pipelines
+   1. Setup and initialization of demo DAGs
+   2. Hard reset procedures for database tables
+   3. Making checks fail and reverting changes
+   4. SQLValueCheckOperator, SQLColumnCheckOperator, and SQLCheckOperator usage
+   5. Best practices for maintaining data quality in Airflow pipelines
