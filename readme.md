@@ -1,4 +1,5 @@
 ### Case study:
+`https://gitdiagram.com/yanliu1111/data-engineering-project`
 1. dbt-project: building e-commerce data models with dbt
 2. Databricks's new AI Data Engineering course.
    1. Lakeflow Spark Declarative Pipelines (SDP) — streaming tables, materialized views, and data-quality expectations, hand-coded in Python and SQL.
