@@ -25,3 +25,5 @@ Focus: Real-time log analytics using streaming data pipelines to feed AI agents 
    3. Making checks fail and reverting changes
    4. SQLValueCheckOperator, SQLColumnCheckOperator, and SQLCheckOperator usage
    5. Best practices for maintaining data quality in Airflow pipelines
+
+update
