@@ -1,0 +1,62 @@
+name: dbt Deploy
+
+on:
+  push:
+    branches: [main]
+
+env:
+  DBT_PROFILES_DIR: .
+  REDSHIFT_HOST: ${{ secrets.REDSHIFT_HOST }}
+  REDSHIFT_USER: ${{ secrets.REDSHIFT_USER }}
+  REDSHIFT_PASSWORD: ${{ secrets.REDSHIFT_PASSWORD }}
+
+permissions:
+  contents: write
+
+jobs:
+  deploy:
+    name: Deploy to Production
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: pip install dbt-redshift
+
+      - name: dbt deps
+        run: dbt deps
+
+      - name: Download production manifest from dbt-manifest branch
+        run: |
+          mkdir -p target-prod
+          git fetch origin dbt-manifest:dbt-manifest 2>/dev/null && \
+          git show dbt-manifest:manifest.json > target-prod/manifest.json 2>/dev/null || \
+          echo "No production manifest branch found"
+
+      - name: dbt build (production - only modified + downstream)
+        run: |
+          if [ -f target-prod/manifest.json ]; then
+            echo "Production manifest found — deploying only changes"
+            dbt build --select state:modified+ --state target-prod/ --target prod
+          else
+            echo "No production manifest — full build"
+            dbt build --target prod
+          fi
+
+      - name: Upload production manifest to dbt-manifest branch
+        run: |
+          git config user.name "github-actions"
+          git config user.email "github-actions@github.com"
+          git checkout --orphan dbt-manifest-tmp
+          git rm -rf . 2>/dev/null || true
+          cp target/manifest.json .
+          git add manifest.json
+          git commit -m "Update production manifest"
+          git push origin dbt-manifest-tmp:dbt-manifest --force

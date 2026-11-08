@@ -25,5 +25,13 @@ Focus: Real-time log analytics using streaming data pipelines to feed AI agents 
    3. Making checks fail and reverting changes
    4. SQLValueCheckOperator, SQLColumnCheckOperator, and SQLCheckOperator usage
    5. Best practices for maintaining data quality in Airflow pipelines
+6. dbt-terraform-cicd-etl-ecommerce
+This project is a dbt-based ETL case study for e-commerce analytics, designed to be infrastructure-as-code (Terraform) friendly and CI/CD-ready:
+   1. Transforms raw e-commerce data (customers, orders, payments, products, sessions) into staging → dimensional → fact models
+   2. Validates data quality via schema tests, referential integrity, and freshness checks
+   3. Targets SQL Server via dbt-sqlserver adapter, with Windows ODBC driver setup
+   4. Supports reproducible builds (dbt build/test) suitable for CI pipelines and Terraform-provisioned warehouses
+   5. Emphasizes metrics: revenue, AOV, conversion rate, repeat purchase rate
+
 
 update

@@ -1,0 +1,52 @@
+name: dbt CI
+
+on:
+  pull_request:
+    branches: [main]
+
+env:
+  DBT_PROFILES_DIR: .
+  REDSHIFT_HOST: ${{ secrets.REDSHIFT_HOST }}
+  REDSHIFT_USER: ${{ secrets.REDSHIFT_USER }}
+  REDSHIFT_PASSWORD: ${{ secrets.REDSHIFT_PASSWORD }}
+
+jobs:
+  lint-and-test:
+    name: Lint, Build & Test (Slim CI)
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: pip install dbt-redshift sqlfluff sqlfluff-templater-dbt
+
+      - name: dbt deps
+        run: dbt deps
+
+      - name: SQL Lint
+        run: sqlfluff lint models/ --config .sqlfluff
+        continue-on-error: true
+
+      - name: Download production manifest from dbt-manifest branch
+        run: |
+          mkdir -p target-prod
+          git fetch origin dbt-manifest:dbt-manifest 2>/dev/null && \
+          git show dbt-manifest:manifest.json > target-prod/manifest.json 2>/dev/null || \
+          echo "No production manifest branch found"
+
+      - name: dbt build (slim CI - only modified + downstream)
+        run: |
+          if [ -f target-prod/manifest.json ]; then
+            echo "Production manifest found — running slim CI"
+            dbt build --select state:modified+ --state target-prod/
+          else
+            echo "No production manifest — running full build"
+            dbt build
+          fi

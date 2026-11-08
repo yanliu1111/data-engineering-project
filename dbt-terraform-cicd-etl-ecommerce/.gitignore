@@ -1,0 +1,11 @@
+target/
+dbt_packages/
+logs/
+virenv/
+.env
+terraform/.env
+terraform/*.tfstate
+terraform/*.tfstate.*
+terraform/.terraform/
+SPRINT_VIDEOS.md
+dbt_internal_packages/
